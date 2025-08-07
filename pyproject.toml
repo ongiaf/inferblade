@@ -1,0 +1,10 @@
+[project]
+name = "inferblade"
+version = "0.1.0"
+description = "inference blade"
+authors = [
+  {name = "ongiaf", email = "jiazhen.gong@botanophobia.xyz"}
+]
+readme = {content-type = "text/plain", file="README.org"}
+requires-python = ">=3.10"
+dependencies = []
