@@ -1,144 +1,284 @@
-<html>
-<head>
-  <meta charset="utf-8" />
-  <title>{{ title or 'Model UI' }}</title>
-  <script src="https://3Dmol.org/build/3Dmol-min.js"></script>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
-    #viewer { width: 600px; height: 500px; }
-  </style>
-</head>
-<body>
-  <h1>ESM3</h1>
-  <form action="/run_esm3_predict" method="post">
-    <label for="sequence">Sequence:</label><br>
-    <textarea name="sequence" id="sequence" rows="4" cols="60" placeholder="Paste protein sequence here"></textarea><br><br>
-    <button type="submit">Run ESM3 Prediction</button>
-  </form>
-
-  <h1>MoFlow</h1>
-  <form action="/run_moflow_predict" method="post">
-    <label for="seed">Seed:</label><br>
-    <textarea name="seed" id="seed" rows="4" cols="60" placeholder="Enter random seed"></textarea><br><br>
-    <button type="submit">Run MoFlow Generation</button>
-  </form>
-
-{% if outputs and (outputs.pdb or outputs.sdf) %}
-{% set has_pdb = outputs.pdb is defined and outputs.pdb %}
-{% set has_sdf = outputs.sdf is defined and outputs.sdf %}
-{% if has_pdb and has_sdf %}
-    <h2>Structures (PDB + SDF)</h2>
-{% elif has_pdb %}
-    <h2>Structure (PDB)</h2>
-{% elif has_sdf %}
-    <h2>Structure (SDF)</h2>
-{% endif %}
-  <div id="viewer"></div>
-  <div class="download-links">
-    {% if has_pdb %}
-      <a download="protein.pdb" href="data:chemical/x-pdb;base64,{{ outputs.pdb }}">Download PDB File</a>
-    {% endif %}
-    {% if has_sdf %}
-      <a download="ligand.sdf" href="data:chemical/x-mdl-sdfile;base64,{{ outputs.sdf }}">Download SDF File</a>
-    {% endif %}
-  </div>
-  <div id="load_errors" class="load-warning"></div>
-  <script>
-    (function() {
-      function b64decode(b64) {
-        try {
-          return atob(String(b64).replace(/\s+/g,''));
-        } catch (e) {
-          return null;
-        }
-      }
-      const hasPDB = {{ 'true' if has_pdb else 'false' }};
-      const hasSDF = {{ 'true' if has_sdf else 'false' }};
-      let pdbText = null;
-      let sdfText = null;
-
-      {% if has_pdb %}
-        const pdb_b64 = '{{ outputs.pdb }}';
-        pdbText = b64decode(pdb_b64);
-      {% endif %}
-      {% if has_sdf %}
-        const sdf_b64 = '{{ outputs.sdf }}';
-        sdfText = b64decode(sdf_b64);
-      {% endif %}
-
-      const errBox = document.getElementById('load_errors');
-      function appendError(msg){
-        if(errBox) errBox.textContent += msg + "\\n";
-      }
-
-      if (hasPDB && !pdbText) appendError("PDB decode failed");
-      if (hasSDF && !sdfText) appendError("SDF decode failed");
-
-      const elem = document.getElementById('viewer');
-      if(!elem){
-        appendError("can not find viewer");
-        return;
-      }
-
-      if (typeof $3Dmol === 'undefined') {
-        appendError("$3Dmol: make sure 3Dmol.js exists");
-        return;
-      }
-
-      const viewer = $3Dmol.createViewer(elem, { backgroundColor: 'white' });
-      viewer.setViewStyle({ fog: true });
-
-      let pdbModel = null;
-      let sdfModel = null;
-
-      if (hasPDB && pdbText) {
-        pdbModel = viewer.addModel(pdbText, 'pdb');
-          pdbModel.setStyle({}, { cartoon: { color: 'spectrum' } });
-      }
-
-      if (hasSDF && sdfText) {
-        sdfModel = viewer.addModel(sdfText, 'sdf');
-        const stickStyle = hasPDB ? { stick: { colorscheme: 'element', radius: 0.2 } }
-                                  : { stick: { colorscheme: 'element', radius: 0.25 } };
-        sdfModel.setStyle({}, stickStyle);
-      }
-
-      if (pdbModel && sdfModel) {
-        try {
-          const ligandAtoms = sdfModel.selectedAtoms({});
-          const proteinAtoms = pdbModel.selectedAtoms({ hetflag: false });
-          const nearResidues = new Set();
-          for (const la of ligandAtoms) {
-            for (const pa of proteinAtoms) {
-              const dx = la.x - pa.x, dy = la.y - pa.y, dz = la.z - pa.z;
-              const d2 = dx*dx + dy*dy + dz*dz;
-              if (d2 < 4.0 * 4.0) {
-                nearResidues.add(pa.resi);
-              }
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <title>A Simple Example</title>
+        <script src="https://3Dmol.org/build/3Dmol-min.js"></script>
+        <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
+        <style>
+            #viewer {
+                width: 90%;
+                height: 400px;
+                border-radius: 8px;
+                position: relative;
             }
+        </style>
+    </head>
+    <body class="bg-gray-100 text-gray-800 font-sans">
+        <div class="max-w-7xl mx-auto p-6 bg-white shadow-lg rounded-lg mt-8">
+            <h1 class="text-2xl font-bold mb-6 text-green-700">A Simple Example</h1>
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div class="space-y-6">
+                    <!-- Tabs Header -->
+                    <div role="tablist"
+                         aria-label="Prediction / Generation Tabs"
+                         class="flex border-b border-gray-200">
+                        {% set server_active = active_tab|default('esm3') %}
+                        <button type="button"
+                                data-tab-target="esm3"
+                                class="tab-btn px-5 py-2 -mb-px border-b-2 font-medium text-sm focus:outline-none transition {% if server_active=='esm3' %}border-green-600 text-green-700{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300{% endif %}">
+                            ESM3
+                        </button>
+                        <button type="button"
+                                data-tab-target="moflow"
+                                class="tab-btn px-5 py-2 -mb-px border-b-2 font-medium text-sm focus:outline-none transition {% if server_active=='moflow' %}border-green-600 text-green-700{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300{% endif %}">
+                            MoFlow
+                        </button>
+                        <button type="button"
+                                data-tab-target="diffdock"
+                                class="tab-btn px-5 py-2 -mb-px border-b-2 font-medium text-sm focus:outline-none transition {% if server_active=='diffdock' %}border-green-600 text-green-700{% else %}border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300{% endif %}">
+                            DiffDock
+                        </button>
+                    </div>
+                    <!-- Panels -->
+                    <div id="tab-panels">
+                        <!-- ESM3 Panel -->
+                        <div id="panel-esm3"
+                             role="tabpanel"
+                             aria-labelledby="tab-esm3"
+                             class="tab-panel {% if server_active!='esm3' %}hidden{% endif %} space-y-4">
+                            <h2 class="text-xl font-semibold text-green-600">ESM3 Prediction</h2>
+                            <form action="/run_esm3_predict" method="post" class="space-y-4">
+                                <input type="hidden" name="active_tab" value="esm3" />
+                                <div>
+                                    <label for="esm3_sequence" class="block text-sm font-medium">Protein Sequence</label>
+                                    <textarea name="sequence"
+                                              id="esm3_sequence"
+                                              rows="4"
+                                              class="w-full p-3 border rounded-md shadow-sm focus:ring-green-500 focus:border-green-500"
+                                              placeholder="Paste protein sequence here"></textarea>
+                                </div>
+                                <button type="submit"
+                                        class="w-full bg-green-600 text-white py-3 rounded-md hover:bg-green-700 transition">
+                                    Run ESM3 Prediction
+                                </button>
+                            </form>
+                        </div>
+                        <!-- MoFlow Panel -->
+                        <div id="panel-moflow"
+                             role="tabpanel"
+                             aria-labelledby="tab-moflow"
+                             class="tab-panel {% if server_active!='moflow' %}hidden{% endif %} space-y-4">
+                            <h2 class="text-xl font-semibold text-green-600">MoFlow Generation</h2>
+                            <form action="/run_moflow_generation" method="post" class="space-y-4">
+                                <input type="hidden" name="active_tab" value="moflow" />
+                                <div>
+                                    <label for="moflow_seed" class="block text-sm font-medium">Seed</label>
+                                    <input type="number"
+                                           name="seed"
+                                           id="moflow_seed"
+                                           min="0"
+                                           class="w-1/2 p-3 border rounded-md shadow-sm focus:ring-green-500 focus:border-green-500"
+                                           placeholder="Enter random seed" />
+                                </div>
+                                <button type="submit"
+                                        class="w-full bg-green-600 text-white py-3 rounded-md hover:bg-green-700 transition">
+                                    Run MoFlow Generation
+                                </button>
+                            </form>
+                        </div>
+                        <!-- DiffDock Panel -->
+                        <div id="panel-diffdock"
+                             role="tabpanel"
+                             aria-labelledby="tab-diffdock"
+                             class="tab-panel {% if server_active!='diffdock' %}hidden{% endif %} space-y-4">
+                            <h2 class="text-xl font-semibold text-green-600">DiffDock Prediction</h2>
+                            <form action="/run_diffdock_generation" method="post" class="space-y-4">
+                                <input type="hidden" name="active_tab" value="diffdock" />
+                                <div>
+                                    <label for="diffdock_sequence" class="block text-sm font-medium">Protein Sequence</label>
+                                    <textarea name="sequence"
+                                              id="diffdock_sequence"
+                                              rows="4"
+                                              class="w-full p-3 border rounded-md shadow-sm focus:ring-green-500 focus:border-green-500"
+                                              placeholder="Paste protein sequence here"></textarea>
+                                </div>
+                                <div>
+                                    <label for="diffdock_seed" class="block text-sm font-medium">Seed</label>
+                                    <input type="number"
+                                           name="seed"
+                                           id="diffdock_seed"
+                                           min="0"
+                                           class="w-1/2 p-3 border rounded-md shadow-sm focus:ring-green-500 focus:border-green-500"
+                                           placeholder="Enter random seed" />
+                                </div>
+                                <button type="submit"
+                                        class="w-full bg-green-600 text-white py-3 rounded-md hover:bg-green-700 transition">
+                                    Run MoFlow Generation
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                <!-- 右侧：输出结构展示 -->
+                <div class="space-y-4">
+                    {% set has_pdb = outputs and (outputs.pdb is defined) and outputs.pdb %}
+                    {% set has_sdf = outputs and (outputs.sdf is defined) and outputs.sdf %}
+                    {% if has_pdb or has_sdf %}
+                        <h2 class="text-xl font-semibold text-green-600">
+                            {% if has_pdb and has_sdf %}
+                                Structures (PDB + SDF)
+                            {% elif has_pdb %}
+                                Structure (PDB)
+                            {% else %}
+                                Structure (SDF)
+                            {% endif %}
+                        </h2>
+                        <div id="viewer"></div>
+                        <div class="flex flex-wrap items-center gap-4">
+                            {% if has_pdb %}
+                                <a download="protein.pdb"
+                                   href="data:chemical/x-pdb;base64,{{ outputs.pdb }}"
+                                   class="bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 transition">
+                                    Download PDB
+                                </a>
+                            {% endif %}
+                            {% if has_sdf %}
+                                <a download="ligand.sdf"
+                                   href="data:chemical/x-mdl-sdfile;base64,{{ outputs.sdf }}"
+                                   class="bg-green-600 text-white py-2 px-4 rounded-md hover:bg-green-700 transition">
+                                    Download SDF
+                                </a>
+                            {% endif %}
+                        </div>
+                        <pre id="load_errors" class="text-red-600 whitespace-pre-wrap text-sm"></pre>
+                        <script>
+            (function() {
+              function b64decode(b64) {
+                try { return atob(String(b64).replace(/\s+/g,'')); }
+                catch(e){ return null; }
+              }
+              const hasPDB = {{ 'true' if has_pdb else 'false' }};
+              const hasSDF = {{ 'true' if has_sdf else 'false' }};
+
+              const pdb_b64 = hasPDB ? '{{ outputs.pdb }}' : null;
+              const sdf_b64 = hasSDF ? '{{ outputs.sdf }}' : null;
+
+              const errBox = document.getElementById('load_errors');
+              function logErr(m){ if(errBox){ errBox.textContent += m + "\n"; } console.warn(m); }
+
+              const elem = document.getElementById('viewer');
+              const viewer = $3Dmol.createViewer(elem, { backgroundColor: 'white' });
+
+              let pdbModel = null, sdfModel = null;
+              let pdbText = hasPDB ? b64decode(pdb_b64) : null;
+              let sdfText = hasSDF ? b64decode(sdf_b64) : null;
+
+              if (hasPDB && !pdbText) logErr('PDB decode failed');
+              if (hasSDF && !sdfText) logErr('SDF decode failed');
+
+              try {
+                if (pdbText) {
+                  pdbModel = viewer.addModel(pdbText, 'pdb');
+                  pdbModel.setStyle({}, { cartoon: { color: 'spectrum' } });
+                }
+                if (sdfText) {
+                  sdfModel = viewer.addModel(sdfText, 'sdf');
+                  sdfModel.setStyle({}, { stick: { colorscheme: 'element', radius: pdbModel ? 0.2 : 0.25 } });
+                }
+
+                if (pdbModel && sdfModel) {
+                  const ligandAtoms = sdfModel.selectedAtoms({});
+                  const proteinAtoms = pdbModel.selectedAtoms({ hetflag: false });
+                  const nearResidues = new Set();
+                  for (const la of ligandAtoms) {
+                    for (const pa of proteinAtoms) {
+                      const dx=la.x-pa.x, dy=la.y-pa.y, dz=la.z-pa.z;
+                      if (dx*dx+dy*dy+dz*dz < 16) nearResidues.add(pa.resi);
+                    }
+                  }
+                  if (nearResidues.size) {
+                    pdbModel.setStyle({ resi: Array.from(nearResidues) },
+                                      { cartoon: { color:'orange', opacity:0.9 } });
+                  }
+                }
+
+                viewer.zoomTo();
+                viewer.render();
+              } catch(e) {
+                logErr('Render failed: ' + e.message);
+              }
+
+              window.addEventListener('resize', () => {
+                viewer.resize();
+                viewer.render();
+              });
+            })();
+                        </script>
+                    {% else %}
+                        <p class="text-gray-500 italic"> Results: </p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <!-- Tabs 切换脚本 -->
+        <script>
+    (function() {
+      const DEFAULT_TAB = 'esm3';
+      const serverTab = '{{ server_active }}' || DEFAULT_TAB;
+
+      function setActive(tabName, pushHash=true) {
+        const buttons = document.querySelectorAll('.tab-btn');
+          buttons.forEach(btn => {
+            const target = btn.getAttribute('data-tab-target');
+            if (target === tabName) {
+              btn.classList.add('border-green-600','text-green-700');
+              btn.classList.remove('border-transparent','text-gray-500');
+            } else {
+              btn.classList.remove('border-green-600','text-green-700');
+              btn.classList.add('border-transparent','text-gray-500');
+            }
+          });
+
+        document.querySelectorAll('.tab-panel').forEach(p => {
+          if (p.id === 'panel-' + tabName) {
+            p.classList.remove('hidden');
+          } else {
+            p.classList.add('hidden');
           }
-          if (nearResidues.size > 0) {
-            const resiList = Array.from(nearResidues);
-            pdbModel.setStyle(
-              { resi: resiList },
-              { cartoon: { color: 'orange', opacity: 0.9 } }
-            );
+        });
+
+        if (pushHash) {
+          if (history.replaceState) {
+            history.replaceState(null, '', '#' + tabName);
+          } else {
+            location.hash = tabName;
           }
-        } catch (e) {
-          appendError("highligh failed: " + e.message);
         }
       }
 
-      viewer.zoomTo();
-      viewer.render();
+      function initialTab() {
+        const hash = location.hash.replace('#','');
+        if (hash === 'esm3' || hash === 'moflow' || hash === 'diffdock') return hash;
+        if (serverTab === 'esm3' || serverTab === 'moflow' || serverTab === 'diffdock' ) return serverTab;
+        return DEFAULT_TAB;
+      }
 
-      window.addEventListener('resize', () => {
-        viewer.resize();
-        viewer.render();
+      const active = initialTab();
+      setActive(active, false);
+
+      document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const tabName = btn.getAttribute('data-tab-target');
+          setActive(tabName);
+        });
+      });
+
+      window.addEventListener('hashchange', () => {
+        const h = location.hash.replace('#','');
+        if (h === 'esm3' || h === 'moflow' || h === 'diffdock') setActive(h, false);
       });
     })();
-  </script>  
-{% endif %}
-
-</body>
+        </script>
+    </body>
 </html>

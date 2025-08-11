@@ -1,0 +1,33 @@
+openapi: 3.0.0
+info:
+  title: MoFlow
+  version: 0.1.0
+servers:
+  - url: http://localhost:8000
+paths:
+  /mock/moflow/generation:
+    post:
+      summary: Generate a molecular
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sequence:
+                  type: integer
+                  description: random seed
+                  example: 0
+      responses:
+        "200":
+          description: SDF file output
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pdb:
+                    type: string
+                    format: base64
+                    description: Base64 encoded sdf file
