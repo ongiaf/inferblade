@@ -1,0 +1,44 @@
+openapi: 3.1.0
+info:
+  title: DiffDock
+  description: DiffDock
+  version: 1.1.3
+servers:
+  - url: http://localhost:8000
+paths:
+  /mims/mock/diffdock/prediction:
+    post:
+      summary: Predict protein and ligand binding position
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                pdb:
+                  type: string
+                  description: protein pdb string
+                  example: ""
+                sdf:
+                  type: string
+                  description: ligand sdf string
+                  example: ""
+      responses:
+        "200":
+          description: PDB file output
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pdb:
+                    type: string
+                    format: base64
+                    description: base64 encoded pdb file
+                  sdf:
+                    type: string
+                    format: base64
+                    description: base64 encoded sdf file
+
+  

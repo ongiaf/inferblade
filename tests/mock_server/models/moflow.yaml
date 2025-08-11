@@ -5,7 +5,7 @@ info:
 servers:
   - url: http://localhost:8000
 paths:
-  /mock/moflow/generation:
+  /mims/mock/moflow/generation:
     post:
       summary: Generate a molecular
       requestBody:
@@ -15,7 +15,7 @@ paths:
             schema:
               type: object
               properties:
-                sequence:
+                random_seed:
                   type: integer
                   description: random seed
                   example: 0
@@ -27,7 +27,7 @@ paths:
               schema:
                 type: object
                 properties:
-                  pdb:
+                  sdf:
                     type: string
                     format: base64
                     description: Base64 encoded sdf file

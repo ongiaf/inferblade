@@ -48,7 +48,7 @@
                              aria-labelledby="tab-esm3"
                              class="tab-panel {% if server_active!='esm3' %}hidden{% endif %} space-y-4">
                             <h2 class="text-xl font-semibold text-green-600">ESM3 Prediction</h2>
-                            <form action="/run_esm3_predict" method="post" class="space-y-4">
+                            <form action="/run_esm3_prediction" method="post" class="space-y-4">
                                 <input type="hidden" name="active_tab" value="esm3" />
                                 <div>
                                     <label for="esm3_sequence" class="block text-sm font-medium">Protein Sequence</label>
@@ -93,24 +93,23 @@
                              aria-labelledby="tab-diffdock"
                              class="tab-panel {% if server_active!='diffdock' %}hidden{% endif %} space-y-4">
                             <h2 class="text-xl font-semibold text-green-600">DiffDock Prediction</h2>
-                            <form action="/run_diffdock_generation" method="post" class="space-y-4">
+                            <form action="/run_diffdock_prediction" method="post" class="space-y-4">
                                 <input type="hidden" name="active_tab" value="diffdock" />
                                 <div>
-                                    <label for="diffdock_sequence" class="block text-sm font-medium">Protein Sequence</label>
+                                    <label for="diffdock_pdb" class="block text-sm font-medium">Protein PDB File</label>
                                     <textarea name="sequence"
-                                              id="diffdock_sequence"
+                                              id="diffdock_pdb"
                                               rows="4"
                                               class="w-full p-3 border rounded-md shadow-sm focus:ring-green-500 focus:border-green-500"
-                                              placeholder="Paste protein sequence here"></textarea>
+                                              placeholder="Paste protein PDB file here"></textarea>
                                 </div>
                                 <div>
-                                    <label for="diffdock_seed" class="block text-sm font-medium">Seed</label>
-                                    <input type="number"
-                                           name="seed"
-                                           id="diffdock_seed"
-                                           min="0"
-                                           class="w-1/2 p-3 border rounded-md shadow-sm focus:ring-green-500 focus:border-green-500"
-                                           placeholder="Enter random seed" />
+                                    <label for="diffdock_sdf" class="block text-sm font-medium">Molecular SDF File</label>
+                                    <textarea name="sequence"
+                                              id="diffdock_sdf"
+                                              rows="4"
+                                              class="w-full p-3 border rounded-md shadow-sm focus:ring-green-500 focus:border-green-500"
+                                              placeholder="Paste molecular SDF file here"></textarea>
                                 </div>
                                 <button type="submit"
                                         class="w-full bg-green-600 text-white py-3 rounded-md hover:bg-green-700 transition">
@@ -120,7 +119,6 @@
                         </div>
                     </div>
                 </div>
-                <!-- 右侧：输出结构展示 -->
                 <div class="space-y-4">
                     {% set has_pdb = outputs and (outputs.pdb is defined) and outputs.pdb %}
                     {% set has_sdf = outputs and (outputs.sdf is defined) and outputs.sdf %}
@@ -216,7 +214,7 @@
             })();
                         </script>
                     {% else %}
-                        <p class="text-gray-500 italic"> Results: </p>
+                        <p class="text-gray-500 italic">Results:</p>
                     {% endif %}
                 </div>
             </div>

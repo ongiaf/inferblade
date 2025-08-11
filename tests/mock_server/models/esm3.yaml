@@ -5,7 +5,7 @@ info:
 servers:
   - url: http://localhost:8000
 paths:
-  /mock/esm3/predict:
+  /mims/mock/esm3/prediction:
     post:
       summary: Predict protein structure from sequence
       requestBody:
