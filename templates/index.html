@@ -1,0 +1,144 @@
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>{{ title or 'Model UI' }}</title>
+  <script src="https://3Dmol.org/build/3Dmol-min.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; }
+    #viewer { width: 600px; height: 500px; }
+  </style>
+</head>
+<body>
+  <h1>ESM3</h1>
+  <form action="/run_esm3_predict" method="post">
+    <label for="sequence">Sequence:</label><br>
+    <textarea name="sequence" id="sequence" rows="4" cols="60" placeholder="Paste protein sequence here"></textarea><br><br>
+    <button type="submit">Run ESM3 Prediction</button>
+  </form>
+
+  <h1>MoFlow</h1>
+  <form action="/run_moflow_predict" method="post">
+    <label for="seed">Seed:</label><br>
+    <textarea name="seed" id="seed" rows="4" cols="60" placeholder="Enter random seed"></textarea><br><br>
+    <button type="submit">Run MoFlow Generation</button>
+  </form>
+
+{% if outputs and (outputs.pdb or outputs.sdf) %}
+{% set has_pdb = outputs.pdb is defined and outputs.pdb %}
+{% set has_sdf = outputs.sdf is defined and outputs.sdf %}
+{% if has_pdb and has_sdf %}
+    <h2>Structures (PDB + SDF)</h2>
+{% elif has_pdb %}
+    <h2>Structure (PDB)</h2>
+{% elif has_sdf %}
+    <h2>Structure (SDF)</h2>
+{% endif %}
+  <div id="viewer"></div>
+  <div class="download-links">
+    {% if has_pdb %}
+      <a download="protein.pdb" href="data:chemical/x-pdb;base64,{{ outputs.pdb }}">Download PDB File</a>
+    {% endif %}
+    {% if has_sdf %}
+      <a download="ligand.sdf" href="data:chemical/x-mdl-sdfile;base64,{{ outputs.sdf }}">Download SDF File</a>
+    {% endif %}
+  </div>
+  <div id="load_errors" class="load-warning"></div>
+  <script>
+    (function() {
+      function b64decode(b64) {
+        try {
+          return atob(String(b64).replace(/\s+/g,''));
+        } catch (e) {
+          return null;
+        }
+      }
+      const hasPDB = {{ 'true' if has_pdb else 'false' }};
+      const hasSDF = {{ 'true' if has_sdf else 'false' }};
+      let pdbText = null;
+      let sdfText = null;
+
+      {% if has_pdb %}
+        const pdb_b64 = '{{ outputs.pdb }}';
+        pdbText = b64decode(pdb_b64);
+      {% endif %}
+      {% if has_sdf %}
+        const sdf_b64 = '{{ outputs.sdf }}';
+        sdfText = b64decode(sdf_b64);
+      {% endif %}
+
+      const errBox = document.getElementById('load_errors');
+      function appendError(msg){
+        if(errBox) errBox.textContent += msg + "\\n";
+      }
+
+      if (hasPDB && !pdbText) appendError("PDB decode failed");
+      if (hasSDF && !sdfText) appendError("SDF decode failed");
+
+      const elem = document.getElementById('viewer');
+      if(!elem){
+        appendError("can not find viewer");
+        return;
+      }
+
+      if (typeof $3Dmol === 'undefined') {
+        appendError("$3Dmol: make sure 3Dmol.js exists");
+        return;
+      }
+
+      const viewer = $3Dmol.createViewer(elem, { backgroundColor: 'white' });
+      viewer.setViewStyle({ fog: true });
+
+      let pdbModel = null;
+      let sdfModel = null;
+
+      if (hasPDB && pdbText) {
+        pdbModel = viewer.addModel(pdbText, 'pdb');
+          pdbModel.setStyle({}, { cartoon: { color: 'spectrum' } });
+      }
+
+      if (hasSDF && sdfText) {
+        sdfModel = viewer.addModel(sdfText, 'sdf');
+        const stickStyle = hasPDB ? { stick: { colorscheme: 'element', radius: 0.2 } }
+                                  : { stick: { colorscheme: 'element', radius: 0.25 } };
+        sdfModel.setStyle({}, stickStyle);
+      }
+
+      if (pdbModel && sdfModel) {
+        try {
+          const ligandAtoms = sdfModel.selectedAtoms({});
+          const proteinAtoms = pdbModel.selectedAtoms({ hetflag: false });
+          const nearResidues = new Set();
+          for (const la of ligandAtoms) {
+            for (const pa of proteinAtoms) {
+              const dx = la.x - pa.x, dy = la.y - pa.y, dz = la.z - pa.z;
+              const d2 = dx*dx + dy*dy + dz*dz;
+              if (d2 < 4.0 * 4.0) {
+                nearResidues.add(pa.resi);
+              }
+            }
+          }
+          if (nearResidues.size > 0) {
+            const resiList = Array.from(nearResidues);
+            pdbModel.setStyle(
+              { resi: resiList },
+              { cartoon: { color: 'orange', opacity: 0.9 } }
+            );
+          }
+        } catch (e) {
+          appendError("highligh failed: " + e.message);
+        }
+      }
+
+      viewer.zoomTo();
+      viewer.render();
+
+      window.addEventListener('resize', () => {
+        viewer.resize();
+        viewer.render();
+      });
+    })();
+  </script>  
+{% endif %}
+
+</body>
+</html>
