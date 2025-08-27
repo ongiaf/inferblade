@@ -1,9 +1,11 @@
 import base64
 import os
 import uuid
+from types import NotImplementedType
 
 import requests
 from flask import Flask, jsonify, redirect, render_template, request, url_for
+from typing_extensions import Dict
 
 app = Flask(__name__)
 
@@ -17,15 +19,15 @@ class BasicClient:
     def __init__(self, url):
         self.url = url
 
-    def is_ready(self):
+    def is_ready(self) -> bool:
         """check server is ready"""
         ready_url = self.url.get("ready", None)
         if ready_url is None:
             return False
-        response = request.post(ready_url, json=dict())
-        return response.status == 200
+        response = requests.post(ready_url, json=dict())
+        return response.status_code == 200
 
-    def create_payload(self, input_dict):
+    def create_payload(self, input_dict: Dict) -> Dict:
         # TODO: support other shape
         payload = dict()
         payload["id"] = str(uuid.uuid4())
@@ -41,7 +43,7 @@ class BasicClient:
         ]
         return payload
 
-    def get_output(self, response):
+    def get_output(self, response: requests.Response) -> Dict:
         # TODO: return error message
         # TODO: support multi-output
         if response != 200:
@@ -58,11 +60,12 @@ class BasicClient:
                 result[name] = base64_encode(data.pop(0))
             else:
                 result[name] = data.pop(0)
+        return result
 
-    def mock_infer(self):
+    def mock_infer(self) -> str | NotImplementedType:
         return NotImplemented
 
-    def infer(self):
+    def infer(self) -> str | NotImplementedType:
         return NotImplemented
 
 
@@ -80,15 +83,15 @@ class ESM3Client(BasicClient):
     def __init__(self, url):
         super().__init__(url)
 
-    def mock_infer(self):
+    def mock_infer(self) -> str | NotImplementedType:
         resp = requests.post(
             "http://localhost:8000/mims/mock/esm3/prediction", json=dict()
         )
         result = resp.json()
         return render_template("index.html", outputs=result)
 
-    def infer(self):
-        pass
+    def infer(self) -> str | NotImplementedType:
+        return NotImplemented
 
 
 esm3_client = ESM3Client(
@@ -105,6 +108,7 @@ app.add_url_rule(
 MOFLOW_HOST = os.getenv("MOFLOW_HOST", "http://localhost:8000")
 MOFLOW_SERVER = f"{MOFLOW_HOST}/v2/models/ESM3"
 
+
 class MoFlowClient(BasicClient):
     def __init__(self, url):
         super().__init__(url)
@@ -117,7 +121,7 @@ class MoFlowClient(BasicClient):
         return render_template("index.html", outputs=result)
 
     def infer(self):
-        pass
+        return NotImplemented
 
 
 moflow_client = MoFlowClient(
@@ -148,7 +152,7 @@ class DiffDockClient(BasicClient):
         return render_template("index.html", outputs=result)
 
     def infer(self):
-        pass
+        return NotImplemented
 
 
 diffdock_client = DiffDockClient(
@@ -160,6 +164,7 @@ app.add_url_rule(
     view_func=diffdock_client.mock_infer,
     methods=["POST"],
 )
+
 
 if __name__ == "__main__":
     app.run(port=6006, debug=True)
