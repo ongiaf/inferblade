@@ -115,13 +115,13 @@ def index():
 for key, model in models.items():
     app.add_url_rule(
         f"/models/{key}",
-        endpoint=f"{model}_{key}",
+        endpoint=f"{key}_index",
         view_func=model.index,
         methods=["GET"],
     )
     app.add_url_rule(
         f"/models/{key}/result",
-        endpoint=f"{model}_{key}_result",
+        endpoint=f"{key}_result",
         view_func=model.infer,
         methods=["POST"],
     )
