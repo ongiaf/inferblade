@@ -1,72 +1,110 @@
 import base64
+import json
+import logging
 import os
 import uuid
+from dataclasses import dataclass
 from types import NotImplementedType
+from typing import Any, Callable, Dict, List, Optional
 
 import requests
-from flask import Flask, jsonify, redirect, render_template, request, url_for
+from flask import Blueprint, Flask, jsonify, render_template, request
 from typing_extensions import Dict
 
 app = Flask(__name__)
 
 
-def base64_encode(input):
-    """Encode input to base64"""
-    return base64.b64encode(input.encode()).decode()
+@dataclass
+class ModelInformation:
+    name: str
+    key: str
+    description: list
+    tags: list
 
 
-class BasicClient:
-    def __init__(self, url):
-        self.url = url
+def create_payload(input_dict: Dict) -> Dict:
+    payload = dict()
+    payload["id"] = str(uuid.uuid4())
+    payload["input"] = [
+        {
+            "name": key,
+            "shape": [1, 1],
+            "datatype": value["type"],
+            "parameters": dict(),
+            "data": [value["value"]],
+        }
+        for key, value in input_dict.items()
+    ]
+    return payload
 
-    def is_ready(self) -> bool:
-        """check server is ready"""
-        ready_url = self.url.get("ready", None)
-        if ready_url is None:
-            return False
-        response = requests.post(ready_url, json=dict())
-        return response.status_code == 200
 
-    def create_payload(self, input_dict: Dict) -> Dict:
-        # TODO: support other shape
-        payload = dict()
-        payload["id"] = str(uuid.uuid4())
-        payload["input"] = [
-            {
-                "name": key,
-                "shape": [1, 1],
-                "datatype": value["type"],
-                "parameters": dict(),
-                "data": [value["value"]],
-            }
-            for key, value in input_dict.items()
-        ]
-        return payload
-
-    def get_output(self, response: requests.Response) -> Dict:
-        # TODO: return error message
-        # TODO: support multi-output
-        if response != 200:
-            return dict()
-        response_list = response.json().get("outputs", None)
-        if response_list is None:
-            return dict()
+def get_output(response: requests.Response) -> Dict:
+    if response.status_code != 200:
+        return {"error": "Response code is not 200."}
+    response_json = response.json()
+    if "error" in response_json:
+        return response_json
+    try:
+        response_list = response_json["output"]
         result = dict()
         for i, resp in enumerate(response_list):
             name = resp.get("name", str(i))
             datatype = resp.get("datatype", None)
             data = resp.get("data", None)
             if datatype == "BYTES":
-                result[name] = base64_encode(data.pop(0))
+                result[name] = base64.b64encode(data.pop(0).encode()).decode()
             else:
                 result[name] = data.pop(0)
         return result
+    except Exception as exception:
+        return {"error": exception}
 
-    def mock_infer(self) -> str | NotImplementedType:
-        return NotImplemented
 
-    def infer(self) -> str | NotImplementedType:
-        return NotImplemented
+DIFFDOCK_SERVER_HOST = os.getenv("DIFFDOCK_SERVER_HOST", "http://localhost:8000")
+DIFFDOCK_SERVER = f"{DIFFDOCK_SERVER_HOST}/v2/models/diffdock"
+
+
+class DiffDockClient:
+    def __init__(self, url):
+        self.url = url
+        self.model = ModelInformation(
+            name="DiffDock",
+            key="diffdock",
+            description=["Predicts the 3D structure of how a molecule interacts with a protein."],
+            tags=["Biology", "Drug Discovery", "Docking"],
+        )
+
+    def index(self):
+        return render_template("models/diffdock.html", model=self.model)
+
+    def infer(self):
+        try:
+            inputs = {
+                "diffdock_pdb": request.files["diffdock_pdb"].read().decode(),
+                "diffdock_sdf": request.files["diffdock_sdf"].read().decode(),
+            }
+            payload_inputs = {
+                "pdb": {"type": "BYTES", "value": inputs["diffdock_pdb"]},
+                "sdf": {"type": "BYTES", "value": inputs["diffdock_sdf"]},
+            }
+            payload = create_payload(payload_inputs)
+            response = requests.post(self.url, json=payload, timeout=(3, 300))
+            result = get_output(response)
+            if "error" not in result:
+                result["pdb"] = base64.b64encode(
+                    inputs["diffdock_pdb"].encode()
+                ).decode()
+            return render_template(
+                "models/diffdock.html", model=self.model, outputs=result
+            )
+        except Exception as exception:
+            app.logger.exception("DiffDock processing failed: %s", exception)
+            return render_template(
+                "models/diffdock.html", model=self.model, outputs={"error": exception}
+            )
+
+
+models = {"diffdock": DiffDockClient(url=f"{DIFFDOCK_SERVER}/infer")}
 
 
 @app.route("/", methods=["GET"])
@@ -74,96 +112,19 @@ def index():
     return render_template("index.html")
 
 
-# --------------------- ESM3 Client --------------------------------------------
-ESM3_HOST = os.getenv("ESM3_HOST", "http://localhost:8000")
-ESM3_SERVER = f"{ESM3_HOST}/v2/models/ESM3"
-
-
-class ESM3Client(BasicClient):
-    def __init__(self, url):
-        super().__init__(url)
-
-    def mock_infer(self) -> str | NotImplementedType:
-        resp = requests.post(
-            "http://localhost:8000/mims/mock/esm3/prediction", json=dict()
-        )
-        result = resp.json()
-        return render_template("index.html", outputs=result)
-
-    def infer(self) -> str | NotImplementedType:
-        return NotImplemented
-
-
-esm3_client = ESM3Client(
-    url={"ready": f"{ESM3_SERVER}/ready", "infer": f"{ESM3_SERVER}/infer"}
-)
-app.add_url_rule(
-    rule="/run_esm3_prediction",
-    endpoint="run_esm3_prediction",
-    view_func=esm3_client.mock_infer,
-    methods=["POST"],
-)
-
-# --------------------- MOFLOW Client --------------------------------------------
-MOFLOW_HOST = os.getenv("MOFLOW_HOST", "http://localhost:8000")
-MOFLOW_SERVER = f"{MOFLOW_HOST}/v2/models/ESM3"
-
-
-class MoFlowClient(BasicClient):
-    def __init__(self, url):
-        super().__init__(url)
-
-    def mock_infer(self):
-        resp = requests.post(
-            "http://localhost:8000/mims/mock/moflow/generation", json=dict()
-        )
-        result = resp.json()
-        return render_template("index.html", outputs=result)
-
-    def infer(self):
-        return NotImplemented
-
-
-moflow_client = MoFlowClient(
-    url={"ready": f"{MOFLOW_SERVER}/ready", "infer": f"{MOFLOW_SERVER}/infer"}
-)
-app.add_url_rule(
-    rule="/run_moflow_generation",
-    endpoint="run_moflow_generation",
-    view_func=moflow_client.mock_infer,
-    methods=["POST"],
-)
-
-
-# --------------------- DIFFDOCK Client --------------------------------------------
-DIFFDOCK_HOST = os.getenv("DIFFDOCK_HOST", "http://localhost:8000")
-DIFFDOCK_SERVER = f"{DIFFDOCK_HOST}/v2/models/DIFFDOCK"
-
-
-class DiffDockClient(BasicClient):
-    def __init__(self, url):
-        super().__init__(url)
-
-    def mock_infer(self):
-        resp = requests.post(
-            "http://localhost:8000/mims/mock/diffdock/prediction", json=dict()
-        )
-        result = resp.json()
-        return render_template("index.html", outputs=result)
-
-    def infer(self):
-        return NotImplemented
-
-
-diffdock_client = DiffDockClient(
-    url={"ready": f"{DIFFDOCK_SERVER}/ready", "infer": f"{DIFFDOCK_SERVER}/infer"}
-)
-app.add_url_rule(
-    rule="/run_diffdock_prediction",
-    endpoint="run_diffdock_prediction",
-    view_func=diffdock_client.mock_infer,
-    methods=["POST"],
-)
+for key, model in models.items():
+    app.add_url_rule(
+        f"/models/{key}",
+        endpoint=f"{model}_{key}",
+        view_func=model.index,
+        methods=["GET"],
+    )
+    app.add_url_rule(
+        f"/models/{key}/result",
+        endpoint=f"{model}_{key}_result",
+        view_func=model.infer,
+        methods=["POST"],
+    )
 
 
 if __name__ == "__main__":

@@ -1,0 +1,107 @@
+{% extends "model.html" %}
+{% block head %}
+    <script src="https://3Dmol.org/build/3Dmol-min.js"></script>
+    <style>
+.mol-container {
+  width: 100%;
+  height: 400px;
+  position: relative;
+}
+    </style>
+{% endblock %}
+{% block input_section %}
+    <form action="/models/diffdock/result"
+          method="post"
+          enctype="multipart/form-data">
+        <div class="mb-3">
+            <label for="diffdock_pdb" class="form-label">Protein PDB File</label>
+            <input type="file" class="form-control" name="diffdock_pdb" accept=".pdb">
+        </div>
+        <div class="mb-3">
+            <label for="diffdock_sdf" class="form-label">Molecular File</label>
+            <input type="file" class="form-control" name="diffdock_sdf" accept=".sdf">
+        </div>
+        <div class="btn-group" role="group">
+            <button type="reset" class="btn btn-outline-secondary">Reset</button>
+            <button type="submit" class="btn btn-outline-primary">Submit</button>
+        </div>
+    </form>
+{% endblock %}
+{% block output_section %}
+    {% set has_error = outputs and (outputs.error is defined) and outputs.error %}
+    {% set has_pdb = outputs and (outputs.pdb is defined) and outputs.pdb %}
+    {% set has_sdf = outputs and (outputs.sdf is defined) and outputs.sdf %}
+    {% if has_pdb and has_sdf %}
+        <a>Positions</a>
+        <div id="viewer" class="mol-container"></div>
+        <div>
+            <a download="ligand_pos0.sdf"
+               href="data:chemical/x-mdl-sdfile;base64,{{ outputs.output_sdf }}"
+               class="btn btn-outline-primary">Download</a>
+        </div>
+        <div id="viewer_errors"></div>
+        <script>
+(function() {
+    function b64decode(b64) {try {return atob(String(b64).replace(/\s+/g,''));} catch(e) {return null;}}
+    const errBox = document.getElementById('viewer_errors');
+    const logErr = (message) => {
+        const wrapper = document.createElement('div');
+        wrapper.innerHTML = [
+            '<div class="alert alert-danger alert-dismissible" role="alert">',
+            `   <div>${message}</div>`,
+            '   <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>',
+            '</div>'
+        ].join('');
+        errBox.append(wrapper);
+    };
+
+    const elem = document.getElementById('viewer');
+    const viewer = $3Dmol.createViewer(elem, {backgroundAlpha: 1});
+
+    const pdb_b64 = '{{ outputs.pdb }}';
+    let pdbText = b64decode(pdb_b64);
+    if (!pdbText)  logErr('PDB decode failed');
+
+    const sdf_b64 = '{{ outputs.sdf }}';
+    let sdfText = b64decode(sdf_b64);
+    if(!sdfText) logErr('SDF decode failed');
+
+    try{
+        let pdb = null, sdf = null;
+
+        pdb = viewer.addModel(pdbText, 'pdb');
+        pdb.setStyle({}, {cartoon: {color: 'white', outline: true}});
+        viewer.addSurface($3Dmol.SurfaceType.VDW, {opacity: 0.4, color: 'white', wireframe: false}, {model: pdb});
+
+        sdf = viewer.addModel(sdfText, 'sdf');
+        sdf.setStyle({}, {stick: {colorscheme: 'element', radius: 0.25}});
+
+        const ligandAtoms = sdf.selectedAtoms({});
+        const proteinAtoms = pdb.selectedAtoms({ hetflag: false });
+        const nearResidues = new Set();
+        for (const la of ligandAtoms) {
+            for (const pa of proteinAtoms) {
+                const dx = la.x - pa.x, dy = la.y - pa.y, dz= la.z - pa.z;
+                if (dx * dx + dy * dy + dz * dz < 16) {
+                    nearResidues.add(pa.resi);
+                }
+            }
+        }
+        if(nearResidues.size) {
+            pdb.setStyle({ resi: Array.from(nearResidues) }, { cartoon: { color:'green' } });
+        }
+
+        viewer.zoomTo();
+        viewer.render()
+    }catch(e){logErr('Render failed: ' + e.message)}
+    window.addEventListener('resize', () => {
+        viewer.resize();
+        viewer.render();
+    })
+})();
+        </script>
+    {% elif has_error %}
+        <div class="alert alert-danger">{{ (outputs.error if has_error else '') | trim }}</div>
+    {% else %}
+    {% endif %}
+{% endblock %}

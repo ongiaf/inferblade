@@ -1,5 +1,5 @@
 import argparse
-import base64
+import time
 
 # Simple HTTP mock server using Flask for local testing
 from flask import Flask, jsonify, request
@@ -7,34 +7,34 @@ from flask import Flask, jsonify, request
 app = Flask(__name__)
 
 
-@app.route("/mims/mock/esm3/prediction", methods=["POST"])
-def esm3_prediction():
+@app.route("/v2/models/esm3/infer", methods=["POST"])
+def esm3_infer():
     j = request.get_json() or {}
+    app.logger.debug("Request: %s", j)
     with open("./tests/data/1a46_protein_processed.pdb", "r") as f:
         pdb = f.read().strip()
-    pdb_b64 = base64.b64encode(pdb.encode()).decode()
-    return jsonify({"pdb": pdb_b64})
+    time.sleep(3)
+    return jsonify({"output": [{"name": "pdb", "datatype": "BYTES", "data": [pdb]}]})
 
 
-@app.route("/mims/mock/moflow/generation", methods=["POST"])
-def moflow_generation():
+@app.route("/v2/models/moflow/infer", methods=["POST"])
+def moflow_infer():
     j = request.get_json() or {}
+    app.logger.debug("Request: %s", j)
     with open("./tests/data/1a46_ligand.sdf", "r") as f:
         sdf = f.read().strip()
-    sdf_b64 = base64.b64encode(sdf.encode()).decode()
-    return jsonify({"sdf": sdf_b64})
+    time.sleep(3)
+    return jsonify({"output": [{"name": "sdf", "datatype": "BYTES", "data": [sdf]}]})
 
 
-@app.route("/mims/mock/diffdock/prediction", methods=["POST"])
-def diffdock_prediction():
+@app.route("/v2/models/diffdock/infer", methods=["POST"])
+def diffdock_infer():
     j = request.get_json() or {}
-    with open("./tests/data/1a46_protein_processed.pdb", "r") as f:
-        pdb = f.read().strip()
-    pdb_b64 = base64.b64encode(pdb.encode()).decode()
+    app.logger.debug("Request: %s", j)
     with open("./tests/data/1a46_ligand.sdf", "r") as f:
         sdf = f.read().strip()
-    sdf_b64 = base64.b64encode(sdf.encode()).decode()
-    return jsonify({"pdb": pdb_b64, "sdf": sdf_b64})
+    time.sleep(3)
+    return jsonify({"output": [{"name": "sdf", "datatype": "BYTES", "data": [sdf]}]})
 
 
 if __name__ == "__main__":
