@@ -1,15 +1,11 @@
 import base64
-import json
-import logging
 import os
 import uuid
 from dataclasses import dataclass
-from types import NotImplementedType
 from typing import Any, Callable, Dict, List, Optional
 
 import requests
 from flask import Blueprint, Flask, jsonify, render_template, request
-from typing_extensions import Dict
 
 app = Flask(__name__)
 
@@ -70,7 +66,9 @@ class DiffDockClient:
         self.model = ModelInformation(
             name="DiffDock",
             key="diffdock",
-            description=["Predicts the 3D structure of how a molecule interacts with a protein."],
+            description=[
+                "Predicts the 3D structure of how a molecule interacts with a protein."
+            ],
             tags=["Biology", "Drug Discovery", "Docking"],
         )
 
@@ -109,7 +107,8 @@ models = {"diffdock": DiffDockClient(url=f"{DIFFDOCK_SERVER}/infer")}
 
 @app.route("/", methods=["GET"])
 def index():
-    return render_template("index.html")
+    models_info = [model.model for model in models.values()]
+    return render_template("index.html", models=models_info)
 
 
 for key, model in models.items():

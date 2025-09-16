@@ -20,13 +20,12 @@
             <div class="container border-bottom">
                 <h1>{{ model.name }}</h1>
                 <div>
-                    {% for description in model.description %}
-                    <p>{{ description }}</p>
-                    {% endfor %}
+                    {% for description in model.description %}<p>{{ description }}</p>{% endfor %}
                 </div>
                 <div class="pb-4">
                     {% for tag in model.tags %}
-                    <a class="badge rounded-pill text-bg-primary">{{ tag }}</a>
+                        <a href="/tags/{{ tag }}"
+                           class="badge rounded-pill text-bg-primary text-decoration-none">{{ tag }}</a>
                     {% endfor %}
                 </div>
             </div>
